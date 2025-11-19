@@ -1,0 +1,3 @@
+models/*
+chroma_db/*
+chroma_db_multidoc/*
