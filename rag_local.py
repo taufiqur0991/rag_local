@@ -38,7 +38,7 @@ print("Vector database siap di folder:", db_path)
 
 # 5. Load model GGUF
 llm = LlamaCpp(
-    model_path="./models/Phi-3-mini-4k-instruct-q4.gguf",  # PASTIKAN ADA .gguf
+    model_path="./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",  # PASTIKAN ADA .gguf
     temperature=0.7,
     max_tokens=1024,
     n_ctx=4096,

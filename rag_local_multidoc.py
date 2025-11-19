@@ -9,7 +9,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 # --- ⚙️ Konfigurasi ---
 # Tentukan path model GGUF dan nama file
-GGUF_MODEL_PATH = "./models/Phi-3-mini-4k-instruct-q4.gguf" 
+GGUF_MODEL_PATH = "./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" 
 # Ganti dengan path model Anda
 
 # Tentukan direktori tempat semua dokumen (PDF, DOCX) Anda berada
