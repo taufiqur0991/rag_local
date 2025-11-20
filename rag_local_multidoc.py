@@ -1,4 +1,5 @@
 import os
+import time
 from glob import glob
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -6,10 +7,11 @@ from langchain_chroma import Chroma
 from langchain_community.llms import LlamaCpp
 from langchain_classic.chains import RetrievalQA
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.prompts import PromptTemplate 
 
 # --- ⚙️ Konfigurasi ---
 # Tentukan path model GGUF dan nama file
-GGUF_MODEL_PATH = "./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" 
+GGUF_MODEL_PATH = "./models/Phi-3-mini-4k-instruct-q4.gguf" 
 # Ganti dengan path model Anda
 
 # Tentukan direktori tempat semua dokumen (PDF, DOCX) Anda berada
@@ -86,16 +88,21 @@ def setup_vector_store(docs, embedding_model):
     )
     
     # Menyimpan database ke disk
-    vectorstore.persist()
+    #vectorstore.persist()
     print(f"Vector store berhasil disimpan di: {CHROMA_DB_PATH}")
     return vectorstore
+
+def process_query(response):
+    print('\n\n--- Sumber Dokumen ---')
+    for doc in response['source_documents']:
+        print(doc.metadata['source'])
 
 def main():
     # 1. Inisialisasi Model Lokal (GGUF)
     try:
         llm = LlamaCpp(
             model_path=GGUF_MODEL_PATH,
-            temperature=0.1,
+            temperature=0.7,
             max_tokens=2048,
             n_gpu_layers=-1, # Atur > 0 jika Anda memiliki GPU yang kompatibel
             verbose=False,
@@ -106,7 +113,8 @@ def main():
         print("Memuat model Embedding (384-dim)...")
         # Ini akan mengunduh model kecil yang cepat dan konsisten (dimensi 384)
         embedding_model = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-small-en-v1.5",
+            #model_name="BAAI/bge-small-en-v1.5",
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True}
         )
@@ -136,13 +144,25 @@ def main():
     # Pastikan vectorstore berhasil dimuat sebelum melanjutkan
     if not vectorstore:
         return
+    # Siapkan template prompt untuk RAG
+    template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer. Use three sentences maximum. Keep the answer as concise as possible. Always say "thanks for asking!" at the end of the answer. 
+    Context: {context}
+    Question: {question}
+    """
 
+    # Tambahkan input_variables agar LangChain tahu variabel apa yang dipakai
+    QA_CHAIN_PROMPT = PromptTemplate(
+        template=template,
+        input_variables=["context", "question"]
+    )
     # 3. Buat Chain RAG
     print("Menyiapkan RetrievalQA Chain...")
     qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
+        llm=llm,        
         chain_type="stuff",
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 3}) # k=3 mengambil 3 chunk paling relevan
+        retriever=vectorstore.as_retriever(search_kwargs={"k": 4}),
+        return_source_documents=True,
+        chain_type_kwargs={"prompt": QA_CHAIN_PROMPT} 
     )
 
     # 4. Loop Tanya Jawab
@@ -151,26 +171,17 @@ def main():
     print("Ketik 'exit' atau 'quit' untuk keluar.")
     
     while True:
-        query = input("❓ Pertanyaan Anda: ")
-        if query.lower() in ["exit", "quit"]:
+        query = input("Pertanyaan Anda: ").strip()
+        if query.lower() in ["exit", "quit","keluar"]:
             break
-        
-        if query:
-            print("\n🔍 Mencari jawaban (Membutuhkan waktu, tergantung kecepatan model)...")
-            try:
-                # Memanggil Chain RAG
-                result = qa_chain.invoke({"query": query})
-                print(f"\n💡 Jawaban: {result['result']}")
-                
-                # OPTIONAL: Tunjukkan sumber dokumen (metadata)
-                retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": 3}).get_relevant_documents(query)
-                sources = set(doc.metadata.get("source") for doc in retrieved_docs if "source" in doc.metadata)
-                if sources:
-                    print(f"\n📚 Sumber dokumen yang digunakan: {', '.join(sources)}")
-                    
-            except Exception as e:
-                print(f"‼️ Terjadi kesalahan saat memanggil LLM: {e}")
-        print("\n" + "="*70)
+        print("\n 🔍 Mencari jawaban (Membutuhkan waktu, tergantung kecepatan model)...")
+        start_q = time.time()
+        # Memanggil Chain RAG
+        result = qa_chain.invoke({"query": query})          
+        print(result["result"])        
+        print(f"\n ⏱️ Waktu menjawab: {time.time() - start_q:.2f} detik")                
+        process_query(result)
+
 
 if __name__ == "__main__":
     main()
